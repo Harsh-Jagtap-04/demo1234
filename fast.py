@@ -95,6 +95,10 @@ class ReferenceContentRequest(BaseModel):
 class ImageGenerationRequest(BaseModel):
     prompt: str
 
+class ContentGenerationRequest(BaseModel):
+    prompt: str
+    reference_content: Optional[str] = None
+
 # Response models
 class ChatResponse(BaseModel):
     response: str
@@ -106,6 +110,10 @@ class ReferenceContentResponse(BaseModel):
 
 class ImageGenerationResponse(BaseModel):
     image_url: str
+    total_tokens: int = 0
+
+class ContentGenerationResponse(BaseModel):
+    content: str
     total_tokens: int = 0
 
 # Initialize chat history stores
@@ -265,6 +273,71 @@ async def generate_image(request: ImageGenerationRequest):
     except Exception as e:
         print(f"Error generating image: {e}")
         raise HTTPException(status_code=500, detail=f"Error generating image: {str(e)}")
+
+@app.post("/generate_storyboard", response_model=ContentGenerationResponse)
+async def generate_storyboard(request: ContentGenerationRequest):
+    try:
+        if not request.prompt:
+            raise HTTPException(status_code=400, detail="Prompt is required")
+
+        # Incorporate reference content if available
+        if request.reference_content:
+            truncated_reference = truncate_text(request.reference_content, 2000)
+            prompt = f"{request.prompt}\n\nReference Content to incorporate:\n{truncated_reference}"
+        else:
+            prompt = request.prompt
+
+        # Generate content using OpenAI
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are an expert e-learning content creator. Generate high-quality educational content based on the provided prompt. If reference content is provided, incorporate relevant information from it."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=2000,
+        )
+        
+        # Extract token usage
+        total_tokens = response.usage.total_tokens
+        
+        # Extract content
+        content = response.choices[0].message.content
+        
+        return ContentGenerationResponse(content=content, total_tokens=total_tokens)
+
+    except Exception as e:
+        print(f"Error generating storyboard content: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating storyboard content: {str(e)}")
+
+@app.post("/generate_outline", response_model=ContentGenerationResponse)
+async def generate_outline(request: ContentGenerationRequest):
+    try:
+        if not request.prompt:
+            raise HTTPException(status_code=400, detail="Prompt is required")
+
+        # Generate content using OpenAI
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are an expert e-learning content creator. Generate a comprehensive course outline based on the provided prompt."},
+                {"role": "user", "content": request.prompt}
+            ],
+            temperature=0.3,
+            max_tokens=2000,
+        )
+        
+        # Extract token usage
+        total_tokens = response.usage.total_tokens
+        
+        # Extract content
+        content = response.choices[0].message.content
+        
+        return ContentGenerationResponse(content=content, total_tokens=total_tokens)
+
+    except Exception as e:
+        print(f"Error generating outline content: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating outline content: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run("fastapi_autogen_app:app", host="0.0.0.0", port=8000, reload=True)
