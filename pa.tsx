@@ -160,6 +160,7 @@ function PromptBuilder() {
         setReferenceStatus("No reference content loaded.")
       }
 
+      // Clear generated content and images
       setGeneratedContent("")
       setGeneratedImageUrl("")
     } catch (error) {
