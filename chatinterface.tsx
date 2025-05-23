@@ -61,8 +61,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, [inputMessage])
 
-  // Check if we should show action buttons (after first user message and AI response)
-  const shouldShowActionButtons = messages.length >= 4
+  // Check if this is the initial system message
+  const isInitialSystemMessage = (index: number, message: Message) => {
+    return index === 1 && message.role === "assistant" && message.content.includes("I'm here to help you with your")
+  }
 
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden flex flex-col h-full min-h-[80vh]">
@@ -84,7 +86,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           )}
         </div>
         <button
-          onClick={onClearChat}
+          onClick={() => onClearChat()}
           className="text-white text-xs border border-white/50 bg-[#6f39cd] px-2 py-1 rounded"
         >
           New Chat
@@ -104,8 +106,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <div className="text-sm" dangerouslySetInnerHTML={{ __html: message.content }}></div>
             </div>
 
-            {/* Show action buttons after every AI response */}
-            {message.role === "assistant" && (
+            {/* Show action buttons after every AI response except the initial system message */}
+            {message.role === "assistant" && !isInitialSystemMessage(index, message) && (
               <div className="mt-3 flex flex-col gap-2">
                 {mode === "image" && (
                   <button
@@ -126,25 +128,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     {isGeneratingContent ? "Generating..." : "Generate Content from Chat"}
                   </button>
                 )}
-
-                {/* Show generated image */}
-                {mode === "image" && generatedImageUrl && (
-                  <div className="mt-3 bg-gray-50 p-4 rounded-md max-w-md">
-                    <img
-                      src={generatedImageUrl || "/placeholder.svg"}
-                      alt="Generated image"
-                      className="max-w-full h-auto rounded-md"
-                    />
-                  </div>
-                )}
-
-                {/* Show generated content */}
-                {(mode === "elearning" || mode === "outline") && generatedContent && (
-                  <div className="mt-3 bg-gray-50 p-4 rounded-md max-w-full">
-                    <h4 className="text-sm font-medium mb-2">Generated Content:</h4>
-                    <div className="text-sm whitespace-pre-wrap max-h-[300px] overflow-y-auto">{generatedContent}</div>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -163,6 +146,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 style={{ animationDelay: "0.4s" }}
               ></span>
             </div>
+          </div>
+        )}
+
+        {/* Show generated content only once at the end of chat */}
+        {mode === "image" && generatedImageUrl && (
+          <div className="bg-gray-50 p-4 rounded-md max-w-md self-start">
+            <h4 className="text-sm font-medium mb-2">Generated Image:</h4>
+            <img
+              src={generatedImageUrl || "/placeholder.svg"}
+              alt="Generated image"
+              className="max-w-full h-auto rounded-md"
+            />
+          </div>
+        )}
+
+        {(mode === "elearning" || mode === "outline") && generatedContent && (
+          <div className="bg-gray-50 p-4 rounded-md max-w-full self-start">
+            <h4 className="text-sm font-medium mb-2">Generated Content:</h4>
+            <div className="text-sm whitespace-pre-wrap max-h-[300px] overflow-y-auto">{generatedContent}</div>
           </div>
         )}
 
