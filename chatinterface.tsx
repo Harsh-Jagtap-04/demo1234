@@ -104,8 +104,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <div className="text-sm" dangerouslySetInnerHTML={{ __html: message.content }}></div>
             </div>
 
-            {/* Show action buttons after the first AI response (index 1) */}
-            {message.role === "assistant" && index === 1 && shouldShowActionButtons && (
+            {/* Show action buttons after every AI response */}
+            {message.role === "assistant" && (
               <div className="mt-3 flex flex-col gap-2">
                 {mode === "image" && (
                   <button
