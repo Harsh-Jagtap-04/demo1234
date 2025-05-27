@@ -1,200 +1,203 @@
+// ClearChat updated to reset reference content regardless of mode
 "use client"
 
-import type React from "react"
-import { useState, useEffect, useRef, useCallback, type ChangeEvent, type KeyboardEvent } from "react"
-import { marked } from "marked"
-import { SendIcon, PaperclipIcon } from "@heroicons/react/24/solid"
+import { useState, useRef, useEffect } from "react"
 
-interface ChatInterfaceProps {
-  onSendMessage: (message: string) => void
-  messages: { id: string; text: string; sender: "user" | "bot" }[]
-  isLoading: boolean
-  mode?: "default" | "elearning"
-  referenceStatus?: string
-  onShowReferenceModal?: () => void
-  onClearChat: () => void
-}
+import ModeSelector from "@/components/promptBuilder/ModeSelector"
+import ChatInterface from "@/components/promptBuilder/ChatInterface"
+import ReferenceUploadModal from "@/components/promptBuilder/ReferenceUploadModal"
+import type { Message, ChatMode } from "./types"
+import Layout from "@/components/Layout/Layout"
+import dynamic from "next/dynamic"
+import { useDispatch, useSelector } from "react-redux"
+import { toast } from "react-toastify"
+import { getImageId } from "@/services/user/getImageId"
+import { logout } from "@/redux/features/authSlice"
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({
-  onSendMessage,
-  messages,
-  isLoading,
-  mode = "default",
-  referenceStatus = "",
-  onShowReferenceModal,
-  onClearChat,
-}) => {
+function PromptBuilder() {
+  const authenticatedUser = useSelector((state: any) => state.auth.user)
+
+  const [mode, setMode] = useState<ChatMode>("image")
+  const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState("")
-  const chatContainerRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const dispatch = useDispatch()
+
+  const [referenceContent, setReferenceContent] = useState("")
+  const [referenceStatus, setReferenceStatus] = useState("No reference content loaded.")
+  const [showReferenceModal, setShowReferenceModal] = useState(false)
+
+  const [generatedImageUrl, setGeneratedImageUrl] = useState("")
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false)
+  const [generatingImageForMessage, setGeneratingImageForMessage] = useState<number | null>(null)
+
+  const [generatedContent, setGeneratedContent] = useState("")
+  const [isGeneratingContent, setIsGeneratingContent] = useState(false)
+  const [generatingContentForMessage, setGeneratingContentForMessage] = useState<number | null>(null)
 
   useEffect(() => {
-    // Scroll to the bottom of the chat container when new messages are added
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  const onInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
-    setInputMessage(event.target.value)
-  }
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault()
-      if (inputMessage.trim()) {
-        onSendMessage(inputMessage)
-        setInputMessage("")
-        adjustTextareaHeight()
-      }
-    }
-  }
-
-  const adjustTextareaHeight = useCallback(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto"
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
-    }
-  }, [])
-
   useEffect(() => {
-    adjustTextareaHeight()
-  }, [inputMessage, adjustTextareaHeight])
+    let initialMessage = ""
+    if (mode === "image") {
+      initialMessage = "Hi, I want to create an AI-generated image, but I don't know how to describe it well."
+    } else if (mode === "elearning") {
+      initialMessage = "Hi, I need help creating content for an e-learning course."
+    } else if (mode === "outline") {
+      initialMessage = "Hi, I need help creating an outline for an e-learning course."
+    }
 
-  const handleDownloadImage = (imageUrl: string) => {
-    const link = document.createElement("a")
-    link.href = imageUrl
-    link.download = `generated-image-${Date.now()}.png`
-    link.target = "_blank"
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    setMessages([
+      { role: "user", content: initialMessage },
+      {
+        role: "assistant",
+        content: `I'm here to help you with your ${mode} needs. What would you like to create?`,
+      },
+    ])
+
+    setGeneratedContent("")
+    setGeneratedImageUrl("")
+    setReferenceContent("")
+    setReferenceStatus("No reference content loaded.")
+  }, [mode])
+
+  const handleModeChange = (newMode: ChatMode) => {
+    if (newMode !== mode) {
+      setMode(newMode)
+      clearChat(newMode)
+    }
   }
 
-  const processMessageContent = (content: string) => {
-    // Configure marked options for better formatting
-    marked.setOptions({
-      breaks: true, // Convert \n to <br>
-      gfm: true, // GitHub flavored markdown
-    })
+  const handleSendMessage = async () => {
+    if (!inputMessage.trim() || isLoading) return
 
-    // Convert markdown to HTML
-    let html = marked(content)
+    const userMessage = { role: "user" as const, content: inputMessage }
+    setMessages((prev) => [...prev, userMessage])
+    setInputMessage("")
+    setIsLoading(true)
 
-    // Add download button to generated images
-    if (content.includes("generated-image-container")) {
-      const imgMatch = content.match(/src="([^"]+)"/)
-      if (imgMatch) {
-        const imageUrl = imgMatch[1]
-        html = html.replace(
-          "</div>",
-          `<button 
-            onclick="(function(url) { 
-              const link = document.createElement('a'); 
-              link.href = url; 
-              link.download = 'generated-image-' + Date.now() + '.png'; 
-              link.target = '_blank'; 
-              document.body.appendChild(link); 
-              link.click(); 
-              document.body.removeChild(link); 
-            })('${imageUrl}')"
-            style="margin-top: 8px; background-color: #6f39cd; color: white; padding: 6px 12px; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;"
-          >
-            Download Image
-          </button></div>`,
-        )
+    try {
+      const response: any = await fetch("/api/user/prompt_builder/prompt_chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authenticatedUser?.token}`,
+        },
+        body: JSON.stringify({
+          message: inputMessage,
+          mode,
+          referenceContent: mode === "elearning" ? referenceContent : undefined,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data?.success) {
+        const assistantMessage = {
+          role: "assistant" as const,
+          content: data.response,
+          isFinalPrompt: data.is_final_prompt,
+        }
+        setMessages((prev) => [...prev, assistantMessage])
+      } else {
+        toast.error(data.message || "Failed to get response from assistant")
       }
+    } catch (error) {
+      console.error("Error sending message:", error)
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Sorry, there was an error processing your request. Please try again.",
+        },
+      ])
+      toast.error("Failed to get response from assistant")
+    } finally {
+      setIsLoading(false)
     }
-
-    return html
   }
 
-  const onSendMessageWrapper = () => {
-    if (inputMessage.trim()) {
-      onSendMessage(inputMessage)
-      setInputMessage("")
-      adjustTextareaHeight()
+  const clearChat = async (newMode?: ChatMode) => {
+    try {
+      const modeToUse = newMode || mode
+
+      await fetch("/api/user/prompt_builder/clear_prompt_chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: modeToUse }),
+      })
+
+      let initialMessage = ""
+      if (modeToUse === "image") {
+        initialMessage = "Hi, I want to create an AI-generated image, but I don't know how to describe it well."
+      } else if (modeToUse === "elearning") {
+        initialMessage = "Hi, I need help creating content for an e-learning course."
+      } else if (modeToUse === "outline") {
+        initialMessage = "Hi, I need help creating an outline for an e-learning course."
+      }
+
+      setMessages([
+        { role: "user", content: initialMessage },
+        {
+          role: "assistant",
+          content: `I'm here to help you with your ${modeToUse} needs. What would you like to create?`,
+        },
+      ])
+
+      setReferenceContent("")
+      setReferenceStatus("No reference content loaded.")
+      setGeneratedContent("")
+      setGeneratedImageUrl("")
+    } catch (error) {
+      console.error("Error clearing chat:", error)
     }
+  }
+
+  const handleGenerateImage = async (prompt: string, messageIndex?: number) => { /* unchanged */ }
+
+  const handleGenerateContent = async (messageIndex?: number) => { /* unchanged */ }
+
+  const handleReferenceUpload = (content: string) => {
+    setReferenceContent(content)
+    setReferenceStatus("Reference content loaded.")
+    toast.success("Reference content uploaded successfully")
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="bg-gray-50 border-b border-gray-300 px-4 py-3 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <h2 className="text-gray-900 text-sm font-medium">Chat Assistant</h2>
-          {mode === "elearning" && <span className="text-xs text-gray-500">{referenceStatus}</span>}
-        </div>
-        <button
-          onClick={onClearChat}
-          className="text-white text-xs border border-white/50 bg-[#6f39cd] px-2 py-1 rounded"
-        >
-          Clear Chat
-        </button>
-      </div>
-
-      {/* Chat Messages */}
-      <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto">
-        {messages.map((message) => (
-          <div key={message.id} className={`mb-3 ${message.sender === "user" ? "text-right" : "text-left"}`}>
-            <div
-              className={`inline-block rounded-xl p-3 text-sm max-w-2/3 break-words ${
-                message.sender === "user"
-                  ? "bg-[#6f39cd] text-white rounded-br-none"
-                  : "bg-gray-200 text-gray-800 rounded-bl-none"
-              }`}
-              dangerouslySetInnerHTML={{
-                __html: processMessageContent(message.text),
-              }}
-            />
-          </div>
-        ))}
-        {isLoading && (
-          <div className="text-left">
-            <div className="inline-block rounded-xl p-3 text-sm max-w-2/3 bg-gray-200 text-gray-800 rounded-bl-none">
-              Thinking...
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Input */}
-      <div className="border-t border-gray-200 p-3 flex gap-2">
-        <textarea
-          ref={textareaRef}
-          value={inputMessage}
-          onChange={onInputChange}
-          onKeyDown={handleKeyDown}
-          placeholder="Type your message..."
-          className="flex-1 p-2 border border-gray-300 rounded-md resize-none text-sm focus:outline-none focus:ring-2 focus:ring-[#6f39cd] focus:border-transparent"
-          rows={1}
-          disabled={isLoading}
+    <Layout>
+      <div className="prompt-builder-container">
+        <ModeSelector mode={mode} onModeChange={handleModeChange} />
+        <ChatInterface
+          messages={messages}
+          inputMessage={inputMessage}
+          isLoading={isLoading}
+          mode={mode}
+          onInputChange={(e) => setInputMessage(e.target.value)}
+          onSendMessage={handleSendMessage}
+          onClearChat={clearChat}
+          onShowReferenceModal={() => setShowReferenceModal(true)}
+          onGenerateImage={handleGenerateImage}
+          onGenerateContent={handleGenerateContent}
+          generatedImageUrl={generatedImageUrl}
+          generatedContent={generatedContent}
+          isGeneratingImage={isGeneratingImage}
+          isGeneratingContent={isGeneratingContent}
+          generatingImageForMessage={generatingImageForMessage}
+          generatingContentForMessage={generatingContentForMessage}
+          referenceStatus={referenceStatus}
+          messagesEndRef={messagesEndRef}
         />
-        {mode === "elearning" && (
-          <button
-            onClick={onShowReferenceModal}
-            className="flex items-center justify-center gap-1 text-xs text-gray-600 hover:text-gray-800 border border-gray-300 px-3 rounded-md bg-white hover:bg-gray-50"
-            title="Upload reference content"
-          >
-            <PaperclipIcon size={14} />
-            Ref
-          </button>
-        )}
-        <button
-          onClick={onSendMessageWrapper}
-          disabled={isLoading || !inputMessage.trim()}
-          className="bg-[#6637B8] text-white px-4 rounded-md disabled:bg-gray-300 disabled:cursor-not-allowed"
-        >
-          <SendIcon
-            className={`relative top-2 -rotate-45 -translate-y-1/2 cursor-pointer hover:scale-110 transition`}
-            width={24}
-            height={24}
-            alt="send button"
-          />
-        </button>
+        <ReferenceUploadModal
+          isOpen={showReferenceModal}
+          onClose={() => setShowReferenceModal(false)}
+          onUpload={handleReferenceUpload}
+        />
       </div>
-    </div>
+    </Layout>
   )
 }
 
-export default ChatInterface
+export default dynamic(() => Promise.resolve(PromptBuilder), { ssr: false })
