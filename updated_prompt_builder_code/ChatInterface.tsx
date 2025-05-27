@@ -98,7 +98,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     <div className="border border-gray-200 rounded-lg overflow-hidden flex flex-col h-full min-h-[80vh]">
       {/* Header */}
       <div className="bg-gray-50 border-b border-gray-300 px-4 py-3 flex justify-between items-center">
-        <h2 className="text-gray-900 text-sm font-medium">Chat Assistant</h2>
+        <div className="flex flex-col">
+          <h2 className="text-gray-900 text-sm font-medium">Chat Assistant</h2>
+          {referenceStatus !== "No reference content loaded." && (
+            <span className="text-xs text-gray-600 mt-1">{referenceStatus}</span>
+          )}
+        </div>
         <button onClick={onClearChat} className="text-white text-xs bg-[#6f39cd] px-2 py-1 rounded">
           Clear Chat
         </button>
